@@ -1,42 +1,50 @@
 <?php
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Headers: Origin, X-Requestes-Whit, Content-Type, Accept');
-header("Content-Type: application/json; charset=UTF-8");
-header('Content-Type: application/json');
-header("Access-Control-Allow-Headers", "Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With");
-header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-$json=file_get_contents('php://input');//captura el parametro en json {'id':118}
-$params=json_decode($json);//paramteros
-include('conexion.php');
-$registros["codigo"]="-1";
-$registros["mensaje"]="No se pudo guardar";
-if($_SERVER['REQUEST_METHOD']!='POST') //cual es el metodo de acceso
-{
-    $registros["mensaje"]="Error Accesos no permitido por este método";
-    echo json_encode($registros);
-    exit(); 
+header('Content-Type: application/json; charset=UTF-8');
+header('Access-Control-Allow-Methods: POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { exit(); }
+
+// Only allow POST requests
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['codigo' => 'error', 'mensaje' => 'Method not allowed']);
+    exit();
 }
-if(isset($params))
-{
-    $nombres=$params->nombres;
-    $apellidos=$params->apellidos;
-    $direccion=$params->direccion;
-    $telefono=$params->telefono;
-    $correo=$params->correo;
-    $fecha=date("Y-m-d H:i:s");// 2025-02-17 4:13 56
-    $sql="INSERT INTO clientes (nombres,apellidos,direccion,telefono,correo,created,modified) VALUES (?,?,?,?,?,?,?)";
-    $stmt = $mysqli->prepare($sql);
-    /* Bind variables to parameters */
-    $numparam = "sssssss"; //cantidad de caracteres debe ser igual al numero de parametros
-    $stmt->bind_param($numparam,$nombres,$apellidos,$direccion,$telefono,$correo,$fecha,$fecha);
-    /* Execute the statement */
-    $stmt->execute();
-    if($stmt->affected_rows>0)//si eliminó registro
-    {
-        $registros["codigo"]="ok";
-        $registros["mensaje"]="Registro guardado"; 
+
+include('conexion.php');
+
+$json   = file_get_contents('php://input');
+$params = json_decode($json);
+
+// Validate required fields
+$required = ['nombres', 'apellidos', 'correo'];
+foreach ($required as $field) {
+    if (empty($params->$field)) {
+        http_response_code(400);
+        echo json_encode(['codigo' => 'error', 'mensaje' => "Missing required field: $field"]);
+        exit();
     }
 }
-echo json_encode($registros);// {'id':1,'nombres':'pedro'}
 
-?>
+$nombres   = trim($params->nombres);
+$apellidos = trim($params->apellidos);
+$direccion = trim($params->direccion ?? '');
+$telefono  = trim($params->telefono  ?? '');
+$correo    = trim($params->correo);
+$now       = date('Y-m-d H:i:s');
+
+$sql  = 'INSERT INTO clientes (nombres, apellidos, direccion, telefono, correo, created, modified)
+         VALUES (?, ?, ?, ?, ?, ?, ?)';
+$stmt = $mysqli->prepare($sql);
+$stmt->bind_param('sssssss', $nombres, $apellidos, $direccion, $telefono, $correo, $now, $now);
+$stmt->execute();
+
+if ($stmt->affected_rows > 0) {
+    http_response_code(201);
+    echo json_encode(['codigo' => 'ok', 'mensaje' => 'Client created', 'id' => $mysqli->insert_id]);
+} else {
+    http_response_code(500);
+    echo json_encode(['codigo' => 'error', 'mensaje' => 'Could not save the record']);
+}
