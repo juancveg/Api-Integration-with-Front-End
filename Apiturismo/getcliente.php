@@ -1,33 +1,36 @@
 <?php
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Headers: Origin, X-Requestes-Whit, Content-Type, Accept');
-header("Content-Type: application/json; charset=UTF-8");
-header('Content-Type: application/json');
-$json=file_get_contents('php://input');//captura el parametro en json {'id':118}
-$params=json_decode($json);//paramteros
+header('Content-Type: application/json; charset=UTF-8');
+header('Access-Control-Allow-Methods: GET');
+
+// Only allow GET requests
+if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+    http_response_code(405);
+    echo json_encode(['codigo' => 'error', 'mensaje' => 'Method not allowed']);
+    exit();
+}
+
 include('conexion.php');
-$registros["codigo"]="-1";
-$registros["mensaje"]="No hay registros";
-if($_SERVER['REQUEST_METHOD']!='GET') //cual es el metodo de acceso
-{
-    $registros["mensaje"]="Error Accesos no permitido por este método";
-    echo json_encode($registros);
-    exit(); 
-}
-$sql="select * from clientes";
-//--- validar si viene parametros
 
-if(isset($params))
-{
-    $id=$params->id;
-    $sql="select * from clientes where id=".$id;
-}
-$result=$mysqli->query($sql);
-if(mysqli_num_rows($result)>0)//si trajo registro
-{
-    $registros=mysqli_fetch_all($result,MYSQLI_ASSOC);
-    // conv los reg en array asociativos
-}
-echo json_encode($registros);// {'id':1,'nombres':'pedro'}
+// Read optional JSON body (to filter by ID)
+$json   = file_get_contents('php://input');
+$params = $json ? json_decode($json) : null;
 
-?>
+if (isset($params->id)) {
+    // Fetch single client by ID — use prepared statement to prevent SQL injection
+    $id   = intval($params->id);
+    $stmt = $mysqli->prepare('SELECT * FROM clientes WHERE id = ?');
+    $stmt->bind_param('i', $id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+} else {
+    // Fetch all clients
+    $result = $mysqli->query('SELECT * FROM clientes ORDER BY id DESC');
+}
+
+if ($result && $result->num_rows > 0) {
+    echo json_encode($result->fetch_all(MYSQLI_ASSOC));
+} else {
+    http_response_code(404);
+    echo json_encode(['codigo' => '-1', 'mensaje' => 'No records found']);
+}
